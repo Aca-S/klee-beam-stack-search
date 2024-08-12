@@ -82,6 +82,20 @@ cl::opt<std::string> BatchTime(
     cl::init("5s"),
     cl::cat(SearchCat));
 
+cl::opt<unsigned> BeamWidth(
+    "beam-width",
+    cl::desc("Width of beam when using the beam searcher (default=256)"),
+    cl::init(256),
+    cl::cat(SearchCat));
+
+cl::opt<unsigned> BeamStackSwapLimit(
+    "beam-stack-swap-limit",
+    cl::desc("Number of states visited in a row without covering a new instruction "
+             "before continuing execution from the states at the bottom of the "
+             "beam stack when using the beam searcher. Set to 0 to disable (default=1000000)"),
+    cl::init(1000000),
+    cl::cat(SearchCat));
+
 } // namespace
 
 void klee::initializeSearchOptions() {
@@ -121,7 +135,7 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, RNG &rng, PTree &process
     case Searcher::NURS_ICnt: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::InstCount, rng); break;
     case Searcher::NURS_CPICnt: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::CPInstCount, rng); break;
     case Searcher::NURS_QC: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::QueryCost, rng); break;
-    case Searcher::Beam: searcher = new BeamSearcher(400); break; // TODO: pass the beam width as a provided parameter
+    case Searcher::Beam: searcher = new BeamSearcher(BeamWidth, BeamStackSwapLimit); break;
   }
 
   return searcher;

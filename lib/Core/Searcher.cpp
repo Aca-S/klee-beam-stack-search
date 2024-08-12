@@ -574,11 +574,19 @@ void InterleavedSearcher::printName(llvm::raw_ostream &os) {
   os << "</InterleavedSearcher>\n";
 }
 
-BeamSearcher::BeamSearcher(size_t beamWidth) : beamWidth{beamWidth} {}
+BeamSearcher::BeamSearcher(size_t beamWidth, size_t beamStackSwapLimit)
+  : beamWidth{beamWidth}
+  , beamStackSwapLimit{beamStackSwapLimit}
+{}
 
 ExecutionState &BeamSearcher::selectState()
 {
-  return *currentLayer.front();
+  ExecutionState *state = currentLayer.front();
+  if (state->coveredNew)
+    statesSinceLastCoveredNew = 0;
+  else
+    ++statesSinceLastCoveredNew;
+  return *state;
 }
 
 void BeamSearcher::update(ExecutionState *current,
@@ -614,12 +622,30 @@ void BeamSearcher::update(ExecutionState *current,
     }
   }
 
+  if (currentLayer.empty() && !unvisitedStack.empty() && statesSinceLastCoveredNew != 0 && statesSinceLastCoveredNew >= beamStackSwapLimit) {
+    if (!nextLayer.empty()) {
+      std::sort(nextLayer.begin(), nextLayer.end(), [this](auto *l, auto *r) {
+        return getWeight(l) > getWeight(r);
+      });
+
+      auto toExchange = std::min(nextLayer.size(), beamWidth);
+
+      unvisitedStack.push_back(std::vector<ExecutionState *>(nextLayer.begin(), nextLayer.begin() + toExchange));
+      if (nextLayer.begin() + toExchange != nextLayer.end())
+        unvisitedStack.push_back(std::vector<ExecutionState *>(nextLayer.begin() + toExchange, nextLayer.end()));
+
+      nextLayer.clear();
+    }
+
+    currentLayer = std::move(unvisitedStack.front());
+    unvisitedStack.erase(unvisitedStack.begin());
+
+    return;
+  }
+
   if (currentLayer.empty() && !nextLayer.empty()) {
-    // TODO: Extract metric computation to a separate method 
-    std::sort(nextLayer.begin(), nextLayer.end(), [](auto *l, auto *r) {
-      auto ld = computeMinDistToUncovered(l->pc, l->stack.back().minDistToUncoveredOnReturn);
-      auto rd = computeMinDistToUncovered(r->pc, r->stack.back().minDistToUncoveredOnReturn);
-      return ld < rd;
+    std::sort(nextLayer.begin(), nextLayer.end(), [this](auto *l, auto *r) {
+      return getWeight(l) > getWeight(r);
     });
 
     auto toExchange = std::min(nextLayer.size(), beamWidth);
@@ -635,7 +661,21 @@ void BeamSearcher::update(ExecutionState *current,
     currentLayer = std::move(unvisitedStack.back());
     unvisitedStack.pop_back();
   }
+
 }
+
+double BeamSearcher::getWeight(ExecutionState *state)
+{
+  uint64_t md2u = computeMinDistToUncovered(state->pc, state->stack.back().minDistToUncoveredOnReturn);
+  double invMD2U = 1. / (md2u ? md2u : 10000);
+
+  double invCovNew = 0.;
+  if (state->instsSinceCovNew)
+    invCovNew = 1. / std::max(1, (int) state->instsSinceCovNew - 1000);
+
+  return invCovNew * invCovNew + invMD2U * invMD2U;
+}
+
 
 bool BeamSearcher::empty()
 {

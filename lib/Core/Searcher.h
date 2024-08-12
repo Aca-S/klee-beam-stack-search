@@ -317,12 +317,15 @@ namespace klee {
 
   class BeamSearcher final : public Searcher {
     size_t beamWidth;
+    size_t beamStackSwapLimit;
+    size_t statesSinceLastCoveredNew {0};
+
     std::vector<ExecutionState *> currentLayer;
     std::vector<ExecutionState *> nextLayer;
     std::vector<std::vector<ExecutionState *>> unvisitedStack;
 
   public:
-    explicit BeamSearcher(size_t beamWidth);
+    explicit BeamSearcher(size_t beamWidth, size_t beamStackSwapLimit);
     ~BeamSearcher() override = default;
 
     ExecutionState &selectState() override;
@@ -331,6 +334,9 @@ namespace klee {
                 const std::vector<ExecutionState *> &removedStates) override;
     bool empty() override;
     void printName(llvm::raw_ostream &os) override;
+  
+  private:
+    double getWeight(ExecutionState* state);
   };
 } // klee namespace
 
