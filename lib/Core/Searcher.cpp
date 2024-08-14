@@ -613,10 +613,13 @@ void BeamSearcher::update(ExecutionState *current,
       continue;
     }
 
-    for (auto &layer : unvisitedStack) {
+    for (size_t i = 0; i < unvisitedStack.size(); i++) {
+      auto &layer = unvisitedStack[i];
       it = std::find(layer.begin(), layer.end(), state);
       if (it != layer.end()) {
         layer.erase(it);
+        if (layer.empty())
+          unvisitedStack.erase(unvisitedStack.begin() + i);
         break;
       }
     }
